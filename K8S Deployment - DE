@@ -5,7 +5,7 @@
 # 5 VM's 2CPU's 2GB Stream 30GB HDD - K8s Installed - Pre-attach to Cluster
 #
 # --------------------------------------------------------------------------------------------------------------------
-# Edit lines 25-35 - Then copy lines 25-140 and paste into Master Controller
+# # Edit line 18 for each Node - Copy 18-232, paste into Master Controller - Copy 18-158, paste into other M/W Nodes
 # --------------------------------------------------------------------------------------------------------------------
 
 # Check MAC Address for duplicates
@@ -156,7 +156,7 @@ systemctl enable kubelet
 
 # Pull images
 kubeadm config images pull
-#
+
 # --------------------------------------------------------------------------------------------------------------------
 # ###########################  Copy to here for Worker Node Deployment ############################################# #
 # --------------------------------------------------------------------------------------------------------------------
