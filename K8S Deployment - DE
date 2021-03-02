@@ -206,10 +206,11 @@ kubectl get secrets
 
 # --------------------------------------------------------------------------------------------------------------------
 
-# After setting up Cluster - Taint Master node, to act as worker node.  After installing Grafana and Jenkins - remove Taint. 
+# Before joining cluster members - Taint Master node, to act as worker node.  After installing Grafana and Jenkins - remove Taint. 
 # kubectl get nodes
 kubectl taint nodes pac-k8s-master0 node-role.kubernetes.io/master-
-# Remove Taint: kubectl taint node --all node-role.kubernetes.io/master:NoSchedule-
+# Remove Taint: 
+# kubectl taint node --all node-role.kubernetes.io/master:NoSchedule
 
 # Install Helm
 curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
@@ -231,6 +232,7 @@ helm install --generate-name prometheus-community/kube-prometheus-stack
 sudo dnf install -y sqlite
 
 # --------------------------------------------------------------------------------------------------------------------
+# Join other Master/Worker Nodes to Cluster
 # --------------------------------------------------------------------------------------------------------------------
 # Look up grafana service port on K8S Dashboard
 # Reset Grafana default password - set new password
