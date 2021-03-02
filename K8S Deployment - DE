@@ -5,7 +5,7 @@
 # Select Minimal install - assign .160 address and complete centos install.  Convert VM to Template.
 # -------------------------------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------------------------------
-# # Edit line 18 for each Node - Copy 18-232, paste into Master Controller - Copy 18-158, paste into other M/W Nodes
+# Edit line 18 for each Node - Copy 18-232, paste into Master Controller - Copy 18-158, paste into other M/W Nodes
 # -------------------------------------------------------------------------------------------------------------------
 
 # Check MAC Address for duplicates
