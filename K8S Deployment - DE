@@ -1,12 +1,12 @@
+# -------------------------------------------------------------------------------------------------------------------
+# 1 Master Controller VM 4 CPU's 8GB RAM 40GB HDD thin provisioned - K8S not installed.
+# 5 VM's 2CPU's 2GB Stream 20GB HDD thin provisioned - K8S not installed.
 # CentOS 8 Stream Install URL:  URI: http://mirror.centos.org/centos/8-stream/BaseOS/x86_64/os/
-# --------------------------------------------------------------------------------------------------------------------
-#
-# 1 Master Controller VM 4 CPU's 8GB RAM 80GB HDD - K8S Installed - Prelaunch
-# 5 VM's 2CPU's 2GB Stream 30GB HDD - K8s Installed - Pre-attach to Cluster
-#
-# --------------------------------------------------------------------------------------------------------------------
+# Select Minimal install - assign .160 address and complete centos install.  Convert VM to Template.
+# -------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 # # Edit line 18 for each Node - Copy 18-232, paste into Master Controller - Copy 18-158, paste into other M/W Nodes
-# --------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 
 # Check MAC Address for duplicates
 # ip link
