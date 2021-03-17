@@ -1,0 +1,29 @@
+# --------------------------------------------------------------------------------------------------------------------
+# Install Prometheus and Grafana #
+# --------------------------------------------------------------------------------------------------------------------
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install --generate-name prometheus-community/kube-prometheus-stack
+
+# helm upgrade --install --wait --timeout 20 prometheus-stack prometheus-community/kube-prometheus-stack
+# Wait Patiently
+
+# Install SQLite
+sudo dnf install -y sqlite
+
+# --------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
+# Look up grafana service port on K8S Dash - Check which node grafana pod is running on, go to NodeIP:GrafanaPort
+# Reset Grafana default password - set new password
+# --------------------------------------------------------------------------------------------------------------------
+# cd /
+# find -name "grafana.db"
+# cd to location of grafada.db
+# sudo sqlite3 grafana.db
+# update user set password = '59acf18b94d7eb0694c61e60ce44c110c7a683ac6a8f09580d626f90f4a242000746579358d77dd9e570e83fa24faa88a8a6', salt = 'F3FAxVm33R' where login = 'admin';
+# sqlite> .exit
+
+# Change service type for Prometheus and Grafana services to NodePort in K8S Dashboard, and wait for port number to self assign.
+# Look up service port numbers for grafana pod and go to master server IP:service port
+
+# Import Grafana Dashboard json 

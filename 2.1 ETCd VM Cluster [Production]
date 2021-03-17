@@ -1,0 +1,127 @@
+# Edit HOSTS - Edit Lines 2, and 56, before copy/paste all into etcd members.
+hostnamectl set-hostname pac-k8s-etcd3
+
+cat <<EOF>> /etc/hosts
+192.168.178.161 pac-k8s-master0
+192.168.178.162 pac-k8s-master1
+192.168.178.163 pac-k8s-master2
+192.168.178.164 pac-k8s-worker0
+192.168.178.165 pac-k8s-worker1
+192.168.178.166 pac-k8s-worker2
+192.168.178.171 pac-k8s-etcd1
+192.168.178.172 pac-k8s-etcd2
+192.168.178.173 pac-k8s-etcd3
+EOF
+
+# Update CentOS
+# dnf -y upgrade
+sysctl --system
+systemctl daemon-reload
+
+# Install chronyd
+sudo dnf -y install chrony
+systemctl stop chronyd
+systemctl start chronyd
+chronyc -a 'burst 4/4'
+
+# Disable SELinux enforcement
+setenforce 0
+sed -i --follow-symlinks 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
+
+# Open Firewall Ports
+firewall-cmd --zone=public --permanent --add-port={6443,10250,10251,10252}/tcp # K8S
+firewall-cmd --zone=public --permanent --add-port={2379,2380}/tcp # ETCd
+firewall-cmd --zone=public --permanent --add-port={5701-5711,25705-25960}/tcp # StorageOS tcp
+firewall-cmd --zone=public --permanent --add-port=5711/udp # StorageOS udp
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.161/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.162/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.163/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.164/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.165/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.166/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.171/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.172/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.173/24 accept'
+
+# Load the new rules
+firewall-cmd --reload
+sysctl --system
+systemctl daemon-reload
+
+# Configure Etcd version and ports
+
+export ETCD_VERSION="3.4.9"
+export CLIENT_PORT="2379"
+export PEERS_PORT="2380"
+export NODE_IP=192.168.178.173 # This IP
+export NODE1_IP=192.168.178.171
+export NODE2_IP=192.168.178.172
+export NODE3_IP=192.168.178.173
+
+# Download Etcd from CoreOS official site
+
+curl -L https://github.com/coreos/etcd/releases/download/v${ETCD_VERSION}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz -o /tmp/etcd-${ETCD_VERSION}-linux-amd64.tar.gz
+mkdir -p /tmp/etcd-v${ETCD_VERSION}-linux-amd64
+tar -xzvf /tmp/etcd-${ETCD_VERSION}-linux-amd64.tar.gz -C /tmp/etcd-v${ETCD_VERSION}-linux-amd64 --strip-components=1
+# rm /tmp/etcd-${ETCD_VERSION}-linux-amd64.tar.gz
+
+# Install Etcd binaries
+
+cd /tmp/etcd-v${ETCD_VERSION}-linux-amd64
+mv etcd /usr/local/sbin/etcd3
+mv etcdctl /usr/local/sbin/etcdctl
+chmod 0755 /usr/local/sbin/etcd3 /usr/local/sbin/etcdctl
+
+# Set up persistent Etcd data directory
+
+mkdir /var/lib/etcdata
+
+# Create the systemd environment file
+
+# On all nodes that will run etcd create a systemd environemnt file /etc/etcd.conf which has the IPs of all the nodes. The NODE_IP will need to change to correspond to the node IP where the environment file resides. NODE1_IP, NODE2_IP and NODE3_IP will remain the same across all three files.
+
+cat <<END > /etc/etcd.conf
+NODE_IP=192.168.178.171 # etcd Host IP
+# Node 1 IP
+NODE1_IP=192.168.178.171
+# Node 2 IP
+NODE2_IP=192.168.178.172
+# Node 3 IP
+NODE3_IP=192.168.178.173
+CLIENT_PORT=${CLIENT_PORT}
+PEERS_PORT=${PEERS_PORT}
+END
+
+# Verify that variables are expanded in the file
+cat /etc/etcd.conf
+
+sysctl --system
+systemctl daemon-reload
+
+# Create the systemd unit file for etcd3 service
+# Create a systemd unit file /etc/systemd/system/etcd3.service with the following information:
+
+cat <<END > /etc/systemd/system/etcd3.service
+[Unit]
+Description=etcd3
+Documentation=https://github.com/coreos/etcd
+Conflicts=etcd2.service
+
+[Service]
+Type=notify
+Restart=always
+RestartSec=5s
+LimitNOFILE=40000
+TimeoutStartSec=0
+EnvironmentFile=/etc/etcd.conf
+
+ExecStart=/usr/local/sbin/etcd3 --name etcd-${NODE_IP} --data-dir /var/lib/etcdata --quota-backend-bytes 8589934592 --auto-compaction-retention 1000 --auto-compaction-mode revision --initial-cluster-state new --initial-cluster-token etcd-token --listen-client-urls http://${NODE_IP}:${CLIENT_PORT},http://127.0.0.1:${CLIENT_PORT} --advertise-client-urls http://${NODE_IP}:${CLIENT_PORT} --listen-peer-urls http://${NODE_IP}:${PEERS_PORT} --initial-advertise-peer-urls http://${NODE_IP}:${PEERS_PORT} --initial-cluster etcd-${NODE1_IP}=http://${NODE1_IP}:${PEERS_PORT},etcd-${NODE2_IP}=http://${NODE2_IP}:${PEERS_PORT},etcd-${NODE3_IP}=http://${NODE3_IP}:${PEERS_PORT}
+
+[Install]
+WantedBy=multi-user.target
+END
+
+sysctl --system
+systemctl daemon-reload
+systemctl enable etcd3.service
+systemctl start etcd3.service

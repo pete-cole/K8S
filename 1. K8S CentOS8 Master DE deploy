@@ -1,0 +1,300 @@
+=------------------------------------------------------------------------------------------------------------------
+# VSphere URL: https://192.168.178.82/
+# VSphere Login: cole@vsphere.local Cole2021!
+# IP Range: 192.168.178.160-192.168.178.190
+# Gateway: 192.168.178.1
+# DNS: 192.168.178.75
+# CentOS 8 Stream Install URL:  URI: http://mirror.centos.org/centos/8-stream/BaseOS/x86_64/os/
+# --------------------------------------------------------------------------------------------------------------------
+#
+# Create 4 VM's from Controller Template - change worker nodes to 2 CPU's 8GB 50GB HDD
+# Console into each VM from vShpere, run nmtui, and edit the IP per the list below - disable and re-enable nic before exiting.
+#
+# --------------------------------------------------------------------------------------------------------------------
+# Edit line 25 for each Node - Copy 25-240 and paste for Master Controller - Copy 25-165 paste into other M/W Nodes
+# --------------------------------------------------------------------------------------------------------------------
+# Check MAC Address for duplicates
+# ip link
+#
+# To check the product_uuid and compare
+# cat /sys/class/dmi/id/product_uuid
+#
+# ------------------------------------------ Deploy K8S --------------------------------------------------------------
+#
+# Edit HOSTS - Change Hostname(s) on following line for each node, before copy/paste into nodes.
+hostnamectl set-hostname pac-k8s-master0
+
+cat <<EOF>> /etc/hosts
+192.168.178.161 pac-k8s-master0
+192.168.178.162 pac-k8s-master1
+192.168.178.163 pac-k8s-master2
+192.168.178.164 pac-k8s-worker0
+192.168.178.165 pac-k8s-worker1
+192.168.178.166 pac-k8s-worker2
+192.168.178.167 pac-k8s-worker3-varna
+192.168.178.168 pac-k8s-worker4-varna
+EOF
+
+# --------------------------------------------------------------------------------------------------------------------
+#  NODE Deployment
+# --------------------------------------------------------------------------------------------------------------------
+
+# Update CentOS
+# dnf -y upgrade
+sysctl --system
+systemctl daemon-reload
+
+# Install chronyd
+sudo dnf -y install chrony
+systemctl stop chronyd
+systemctl start chronyd
+chronyc -a 'burst 4/4'
+
+# Install Git
+sudo dnf -y install git
+
+# Disable SELinux enforcement
+setenforce 0
+sed -i --follow-symlinks 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
+
+# Open Firewall Ports
+firewall-cmd --zone=public --permanent --add-port={6443,10250,10251,10252}/tcp # K8S
+firewall-cmd --zone=public --permanent --add-port={2379,2380}/tcp # ETCd
+firewall-cmd --zone=public --permanent --add-port={5701-5711,25705-25960}/tcp # StorageOS tcp
+firewall-cmd --zone=public --permanent --add-port=5711/udp # StorageOS udp
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.161/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.162/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.163/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.164/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.165/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.166/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.167/24 accept'
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=192.168.178.168/24 accept'
+
+# Allow access to the host’s localhost from the docker container
+firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=172.17.0.0/16 accept'
+
+# Enable IP masquerade at the firewall
+firewall-cmd --add-masquerade --permanent
+
+# Enable transparent masquerading and facilitate Virtual Extensible LAN (VxLAN) traffic for communication between Kubernetes pods across the cluster.
+modprobe br_netfilter
+
+# Set bridged packets to traverse iptables rules.
+cat <<EOF > /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+
+# Load the new rules
+firewall-cmd --reload
+sysctl --system
+systemctl daemon-reload
+
+# Set bridged packets to traverse iptables rules
+cat <<EOF > /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+
+# Disable SWAP to enable the kubelet to work properly
+sudo sed -i '/swap/d' /etc/fstab
+sudo swapoff -a
+sudo rm /etc/fstab
+
+# Load the new rules
+firewall-cmd --reload
+sysctl --system
+systemctl daemon-reload
+
+# Install ETCD
+ETCD_VER=v3.4.15
+
+# choose either URL
+GOOGLE_URL=https://storage.googleapis.com/etcd
+GITHUB_URL=https://github.com/coreos/etcd/releases/download
+DOWNLOAD_URL=${GOOGLE_URL}
+
+rm -f /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
+rm -rf /tmp/test-etcd && mkdir -p /tmp/test-etcd
+
+curl -L ${DOWNLOAD_URL}/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz -o /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
+tar xzvf /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz -C /tmp/test-etcd --strip-components=1
+
+# sudo cp /tmp/test-etcd/etcd* [YOUR_EXEC_DIR]
+# sudo mkdir -p /usr/local/bin/ && sudo cp /tmp/test-etcd/etcd* /usr/local/bin/
+
+/tmp/test-etcd/etcd --version
+ETCDCTL_API=3 /tmp/test-etcd/etcdctl version
+
+# --------------------------------------------------------------------------------------------------------------------
+# Install Docker #
+# --------------------------------------------------------------------------------------------------------------------
+
+## Install Containerd.io ##
+sudo dnf -y install https://download.docker.com/linux/centos/8/x86_64/stable/Packages/containerd.io-1.4.3-3.1.el8.x86_64.rpm -y
+sudo sysctl --system
+sudo systemctl daemon-reload
+systemctl start containerd
+systemctl enable containerd
+
+## Install Docker 19.03 ##
+sudo dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+# Install specific version of docker (19.03 required by K8S)
+sudo dnf -y install docker-ce-3:19.03.14-3.el8
+# sudo dnf -y install https://download.docker.com/linux/centos/8/x86_64/stable/Packages/docker-ce-19.03.14-3.el8.x86_64.rpm
+# sudo dnf -y install https://download.docker.com/linux/centos/8/x86_64/stable/Packages/docker-ce-cli-19.03.14-3.el8.x86_64.rpm
+sudo dnf provides tc -y
+sudo dnf install iproute-tc -y
+
+# Add Docker Repository - Install most recent version
+# dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+# dnf install docker-ce --nobest -y
+
+# Perm change docker cgroupdriver to systemd
+cat <<EOF>> /usr/lib/systemd/system/docker.service
+ExecStart=/usr/bin/dockerd --exec-opt native.cgroupdriver=systemd
+EOF
+
+cat <<EOF>> /etc/systemd/system/docker.service.d/execstart_override.conf
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd --exec-opt native.cgroupdriver=systemd
+EOF
+
+# Start and enable Docker at startup
+sudo sysctl --system
+sudo systemctl daemon-reload
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# --------------------------------------------------------------------------------------------------------------------
+# Install Kubernetes #
+# --------------------------------------------------------------------------------------------------------------------
+
+# Add Kubernetes Repository
+cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kubelet kubeadm kubectl
+EOF
+
+# Install Kubernetes
+dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+
+# Start and enable kubernetes
+sudo sysctl --system
+sudo systemctl daemon-reload
+systemctl start kubelet
+systemctl enable kubelet
+
+#
+# --------------------------------------------------------------------------------------------------------------------
+# ###########################  Copy to here for Worker Node Deployment ############################################# #
+# --------------------------------------------------------------------------------------------------------------------
+#
+# --------------------------------------------------------------------------------------------------------------------
+# ####################################   Launch Control Plane #   ################################################## #
+# --------------------------------------------------------------------------------------------------------------------
+# Pull images
+kubeadm config images pull
+
+# Single Control Plane
+# sudo kubeadm init --pod-network-cidr 192.168.0.0/16
+
+# High Availability Control Plane
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16 --control-plane-endpoint "192.168.178.161:6443" --upload-certs
+
+# Install Calico Container Network Interface
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+chown $(id -u):$(id -g) $HOME/.kube/config
+kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+
+# Deploy Kubernetes Dashboard
+# sudo kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0/aio/deploy/recommended.yaml
+# sudo sysctl --system
+# sudo systemctl daemon-reload
+
+# Confirm that it is working by checking that the CoreDNS pod is running by typing:
+# sudo kubectl get pods --all-namespaces
+
+# Create Service Account
+# kubectl create serviceaccount jenkins-pete-sa
+
+# Bind Service Account
+# kubectl create clusterrolebinding jenkins-pete-sa --clusterrole=cluster-admin --serviceaccount=default:jenkins-pete-sa
+
+# List secrets
+# kubectl get secrets
+
+# kubectl describe secret - access token:
+
+# Start Dashboard Host Server
+
+# kubectl proxy
+
+# To access the Dashboard, open a web browser on the node where the proxy is running and navigate to
+# http://localhost:8001/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/#!/login.
+# and paste the above secret to log in
+
+# --------------------------------------------------------------------------------------------------------------------
+
+# Before setting up Cluster - Taint Master node, to act as worker node.  After installing StorageOS, Grafana and Jenkins - remove Taint.
+# kubectl get nodes
+kubectl taint nodes pac-k8s-master0 node-role.kubernetes.io/master-
+# Remove Taint: kubectl taint node pac-k8s-master0 node-role.kubernetes.io/master:NoSchedule
+
+# StorageOS taint node as computeonly
+kubectl label node pac-k8s-master0 storageos.com/computeonly=true
+# kubectl label node pac-k8s-worker0 storageos.com/computeonly=true
+
+# Install Helm
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+helm repo add stable https://charts.helm.sh/stable
+
+# List secrets
+kubectl get secrets
+
+Describe K8S Dashboard login secret [dashboard-pete-sa-token]
+# kubectl describe secret secret-name
+
+# Open a new terminal into master0 and port forward localhost
+# exit
+# ssh -L 8001:127.0.0.1:8001 root@192.168.178.161
+
+# Run kubectl proxy
+
+# Go to http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/#/login
+# Log in with the secret from above (save the secret and the kubeadm launch commands to join nodes to the cluster)
+#
+# --------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
+# Clean Up
+curl -Ls http://bit.ly/clean-centos-disk-space | sudo bash
+# Trim Log files
+find /var -name "*.log" \( \( -size +50M -mtime +7 \) -o -mtime +30 \) -exec truncate {} --size 0 \;
+yum clean all
+rm -rf /var/cache/yum
+rm -rf /var/tmp/yum-*
+package-cleanup --quiet --leaves -y
+package-cleanup --quiet --leaves | xargs yum remove -y
+rm -rf /root/.wp-cli/cache/*
+rm -rf /home/*/.wp-cli/cache/*
+(( $(rpm -E %{rhel}) >= 8 )) && dnf remove $(dnf repoquery --installonly --latest-limit=-2 -q) -y
+(( $(rpm -E %{rhel}) <= 7 )) && package-cleanup --oldkernels --count=2 -y
+(( $(rpm -E %{rhel}) >= 8 )) && dnf remove $(dnf repoquery --installonly --latest-limit=-1 -q) --nobest --skip-broken -y
+(( $(rpm -E %{rhel}) <= 7 )) && package-cleanup --oldkernels --count=1 -y
+rm -rf /root/.composer/cache
+rm -rf /home/*/.composer/cache
+find -regex ".*/core\.[0-9]+$" -delete
+find /home/*/public_html/ -name error_log -delete
+rm -rf /root/.npm /home/*/.npm /root/.node-gyp /home/*/.node-gyp /tmp/npm-*
+rm -rf /var/cache/mock/* /var/lib/mock/*
