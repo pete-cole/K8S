@@ -19,10 +19,15 @@ fi
 echo "=========================================="
 echo "3. DEPENDENCY & PREQUISITE PACKAGES"
 echo "=========================================="
+# Suppress service restarts and kernel upgrade prompts completely
 mkdir -p /etc/needrestart/conf.d
-echo '\''$nrconf{restart} = "a";'\'' > /etc/needrestart/conf.d/99-disable-prompt.conf
+echo '$nrconf{restart} = "a";' > /etc/needrestart/conf.d/99-disable-prompt.conf
+echo '$nrconf{kernelhints} = 0;' >> /etc/needrestart/conf.d/99-disable-prompt.conf
 
-apt-get update && apt-get install -y sudo curl gpg ca-certificates lsb-release gnupg
+# Force apt to run in completely headless mode
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update && apt-get install -y -o Dpkg::Options::="--force-confold" sudo curl gpg ca-certificates lsb-release gnupg
 
 if id "pete" &>/dev/null; then
     usermod -aG sudo,docker pete
