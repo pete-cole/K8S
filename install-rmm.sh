@@ -19,14 +19,11 @@ fi
 echo "=========================================="
 echo "3. DEPENDENCY & PREQUISITE PACKAGES"
 echo "=========================================="
-# Suppress service restarts and kernel upgrade prompts completely
 mkdir -p /etc/needrestart/conf.d
-echo '$nrconf{restart} = "a";' > /etc/needrestart/conf.d/99-disable-prompt.conf
-echo '$nrconf{kernelhints} = 0;' >> /etc/needrestart/conf.d/99-disable-prompt.conf
+echo '"'"'$nrconf{restart} = "a";'"'"' > /etc/needrestart/conf.d/99-disable-prompt.conf
+echo '"'"'$nrconf{kernelhints} = 0;'"'"' >> /etc/needrestart/conf.d/99-disable-prompt.conf
 
-# Force apt to run in completely headless mode
 export DEBIAN_FRONTEND=noninteractive
-
 apt-get update && apt-get install -y -o Dpkg::Options::="--force-confold" sudo curl gpg ca-certificates lsb-release gnupg
 
 if id "pete" &>/dev/null; then
@@ -69,7 +66,7 @@ cd /opt/tacticalrmm
 curl -o install.sh https://raw.githubusercontent.com/amidaware/tacticalrmm/develop/install.sh
 
 sed -i "s/certbot/echo \"Certbot skipped\"/g" install.sh
-sed -i \'s/"22.04"/"24.04"/g\' install.sh
+sed -i "s/\"22.04\"/\"24.04\"/g" install.sh
 
 chmod +x install.sh
 
