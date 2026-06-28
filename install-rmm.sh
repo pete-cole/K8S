@@ -24,7 +24,6 @@ echo '"'"'$nrconf{restart} = "a";'"'"' > /etc/needrestart/conf.d/99-disable-prom
 echo '"'"'$nrconf{kernelhints} = 0;'"'"' >> /etc/needrestart/conf.d/99-disable-prompt.conf
 
 export DEBIAN_FRONTEND=noninteractive
-
 apt-get update && apt-get install -y -o Dpkg::Options::="--force-confold" sudo curl gpg ca-certificates lsb-release gnupg
 
 if id "pete" &>/dev/null; then
